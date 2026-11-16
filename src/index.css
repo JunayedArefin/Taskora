@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-manrope: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-hanken: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-hanken);
+    background-color: #f3effa;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Custom font utility classes to match Figma output exactly */
+.font-\[\'Manrope\:SemiBold\'\] {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 600;
+}
+.font-\[\'Manrope\:Bold\'\] {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+}
+.font-\[\'Hanken_Grotesk\:Regular\'\] {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-weight: 400;
+}
+.font-\[\'Hanken_Grotesk\:Medium\'\] {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-weight: 500;
+}
+.font-\[\'Hanken_Grotesk\:SemiBold\'\] {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-weight: 600;
+}
+.font-\[\'Hanken_Grotesk\:Bold\'\] {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-weight: 700;
+}
+
+/* Hide scrollbars on horizontal filter pills while keeping scrollability */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
