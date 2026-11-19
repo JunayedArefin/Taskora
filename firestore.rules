@@ -1,0 +1,205 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required, immutable, matches userId, 1..128 chars) - Unique user identifier
+//   - email: string (required, 3..256 chars) - User account email
+//   - name: string (required, 1..150 chars) - Display name shown on profile and leaderboard
+//   - profilePicture: string (required, 1..500000 chars) - Avatar asset path or base64 data URL
+//   - role: string (required, 1..150 chars) - Professional title/headline
+//   - country: string (required, 1..100 chars) - User country for leaderboard filtering
+//   - state: string (required, 1..100 chars) - User state/region for local leaderboard filtering
+//   - location: string (required, 1..250 chars) - Formatted "State, Country" string
+//   - bio: string (required, 0..1000 chars) - Short profile biography
+//   - openForWork: bool (required) - Availability badge status
+//   - rankNumber: int (required, >= 1) - Computed leaderboard rank position
+//   - tasksCompleted: int (required, >= 0) - Total completed tasks count
+//   - completionRate: int (required, 0..100) - Task completion percentage
+//   - streakDays: int (required, >= 0) - Productive days streak count
+//   - payloadJson: string (required, 2..900000 chars) - Serialized UserProfileData snapshot
+//
+// Subcollection: users/{userId}/months
+// Document ID: {monthKey} (e.g., "2026-11")
+// Fields:
+//   - monthKey: string (required, immutable, matches monthKey, 7..20 chars) - YYYY-MM key
+//   - displayMonth: string (required, 1..50 chars) - Formatted month label (e.g., "Nov 2026")
+//
+// Subcollection: users/{userId}/months/{monthKey}/dates
+// Document ID: {dateKey} (e.g., "2026-11-18")
+// Fields:
+//   - dateKey: string (required, immutable, matches dateKey, 10..20 chars) - YYYY-MM-DD key
+//   - displayDate: string (required, 1..50 chars) - Formatted date label (e.g., "Nov 18, 2026")
+//   - tasksJson: string (required, 2..500000 chars) - Serialized TaskItem[] with subtasks
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function uidUnchanged(userId) {
+      return ('uid' in request.resource.data) &&
+        request.resource.data.uid == userId;
+    }
+
+    function uidNotModified() {
+      return ('uid' in request.resource.data) &&
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 3 &&
+        email.size() <= 256 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidUserProfile(data, userId) {
+      let allowedFields = [
+        'uid',
+        'email',
+        'name',
+        'profilePicture',
+        'role',
+        'country',
+        'state',
+        'location',
+        'bio',
+        'openForWork',
+        'rankNumber',
+        'tasksCompleted',
+        'completionRate',
+        'streakDays',
+        'payloadJson'
+      ];
+      return hasRequiredFields(allowedFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        uidUnchanged(userId) &&
+        validStringLength('uid', 1, 128) &&
+        isValidEmail(data.email) &&
+        validStringLength('name', 1, 150) &&
+        validStringLength('profilePicture', 1, 500000) &&
+        validStringLength('role', 1, 150) &&
+        validStringLength('country', 1, 100) &&
+        validStringLength('state', 1, 100) &&
+        validStringLength('location', 1, 250) &&
+        validStringLength('bio', 0, 1000) &&
+        data.openForWork is bool &&
+        data.rankNumber is int && data.rankNumber >= 1 &&
+        data.tasksCompleted is int && data.tasksCompleted >= 0 &&
+        data.completionRate is int && data.completionRate >= 0 && data.completionRate <= 100 &&
+        data.streakDays is int && data.streakDays >= 0 &&
+        validStringLength('payloadJson', 2, 900000);
+    }
+
+    function isValidMonthBucket(data, monthKey) {
+      let allowedFields = ['monthKey', 'displayMonth'];
+      return hasRequiredFields(allowedFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        data.monthKey == monthKey &&
+        validStringLength('monthKey', 7, 20) &&
+        validStringLength('displayMonth', 1, 50);
+    }
+
+    function isValidDateBucket(data, dateKey) {
+      let allowedFields = ['dateKey', 'displayDate', 'tasksJson'];
+      return hasRequiredFields(allowedFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        data.dateKey == dateKey &&
+        validStringLength('dateKey', 10, 20) &&
+        validStringLength('displayDate', 1, 50) &&
+        validStringLength('tasksJson', 2, 500000);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Publicly readable for the Guest & Monthly Leaderboard
+      allow read: if true;
+
+      // Writable via REST or Firebase Auth with strict schema & size validation
+      allow create: if (isOwner(userId) || request.auth == null) &&
+        isValidUserProfile(request.resource.data, userId);
+
+      allow update: if (isOwner(userId) || request.auth == null) &&
+        isValidUserProfile(request.resource.data, userId) &&
+        uidNotModified() &&
+        areImmutableFieldsUnchanged(['uid']);
+
+      allow delete: if isOwner(userId);
+
+      match /months/{monthKey} {
+        allow read: if true;
+
+        allow create: if (isOwner(userId) || request.auth == null) &&
+          isValidMonthBucket(request.resource.data, monthKey);
+
+        allow update: if (isOwner(userId) || request.auth == null) &&
+          isValidMonthBucket(request.resource.data, monthKey) &&
+          areImmutableFieldsUnchanged(['monthKey']);
+
+        allow delete: if isOwner(userId);
+
+        match /dates/{dateKey} {
+          allow read: if true;
+
+          allow create: if (isOwner(userId) || request.auth == null) &&
+            isValidDateBucket(request.resource.data, dateKey);
+
+          allow update: if (isOwner(userId) || request.auth == null) &&
+            isValidDateBucket(request.resource.data, dateKey) &&
+            areImmutableFieldsUnchanged(['dateKey']);
+
+          allow delete: if isOwner(userId);
+        }
+      }
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

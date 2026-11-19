@@ -38,6 +38,13 @@ jobs:
             npx cap add android
           fi
           npx cap sync android
+          for dir in android/app/src/main/res/mipmap-*; do
+            if [ -d "$dir" ]; then
+              cp public/assets/Taskora_Icon.png "$dir/ic_launcher.png" 2>/dev/null || true
+              cp public/assets/Taskora_Icon.png "$dir/ic_launcher_round.png" 2>/dev/null || true
+              cp public/assets/Taskora_Icon.png "$dir/ic_launcher_foreground.png" 2>/dev/null || true
+            fi
+          done
 
       - name: Build Debug APK with Gradle
         working-directory: android
