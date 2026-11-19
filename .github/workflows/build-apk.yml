@@ -49,9 +49,12 @@ jobs:
       - name: Build Debug APK with Gradle
         working-directory: android
         run: |
+          sed -i 's/versionCode 1/versionCode 2/g' app/build.gradle || true
+          sed -i 's/versionName "1.0"/versionName "2.0"/g' app/build.gradle || true
           chmod +x gradlew
           ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../Taskora.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../Taskora-v2.0.0.apk
 
       - name: Upload Taskora.apk Artifact
         uses: actions/upload-artifact@v4
@@ -59,10 +62,18 @@ jobs:
           name: Taskora-apk
           path: Taskora.apk
 
-      - name: Publish APK to GitHub Releases
+      - name: Publish APK to GitHub Releases & Update Repo Taskora.apk
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Taskora.apk
+          git commit -m "Auto-update compiled Taskora.apk [skip ci]" || true
+          git push origin HEAD:main || true
           gh release delete v1.0.0 --yes || true
           git tag -d v1.0.0 || true
-          gh release create v1.0.0 Taskora.apk --title "Taskora v1.0.0 Android APK" --notes "Installable Android APK for Taskora built from Figma design."
+          gh release create v1.0.0 Taskora.apk Taskora-v2.0.0.apk --title "Taskora Android APK (Latest)" --notes "Latest installable Android APK for Taskora."
+          gh release delete v2.0.0 --yes || true
+          git tag -d v2.0.0 || true
+          gh release create v2.0.0 Taskora.apk Taskora-v2.0.0.apk --title "Taskora v2.0.0 Android APK (Latest)" --notes "Latest updated Android APK for Taskora with Subscription, Daily Repeat, Edit Task, and Consistency Grid."
